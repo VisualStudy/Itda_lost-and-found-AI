@@ -9,6 +9,15 @@
     location.href = '/'
   })
 
+  $('[data-password-toggle]')?.addEventListener('click', (event) => {
+    const button = event.currentTarget
+    const input = button.parentElement.querySelector('input')
+    const reveal = input.type === 'password'
+    input.type = reveal ? 'text' : 'password'
+    button.textContent = reveal ? '숨기기' : '보기'
+    button.setAttribute('aria-label', reveal ? '비밀번호 숨기기' : '비밀번호 보기')
+  })
+
   const authForm = $('[data-auth-form]')
   if (authForm) {
     authForm.addEventListener('submit', async (event) => {

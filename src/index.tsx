@@ -1,9 +1,9 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { clearSession, getSession, hashPassword, setSession, verifyPassword } from './auth'
 import { processNextAiJob } from './ai'
 import { createReport, findReport, listReports } from './repository'
 import type { Bindings, SessionUser } from './types'
-import { AuthPage, ComingSoon, DetailPage, HomePage, Landing, NewFoundPage, Page, ProfilePage, ReportsPage } from './views'
+import { AuthPage, ComingSoon, DetailPage, HomePage, Landing, Magpie, NewFoundPage, Page, ProfilePage, ReportsPage } from './views'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -25,9 +25,68 @@ function jsonError(c: Parameters<typeof getSession>[0], message: string, status:
   return c.json({ error: message }, status)
 }
 
+type AppContext = Context<{ Bindings: Bindings }>
+type AuthInput = { email: string; password: string; nickname: string }
+
+async function readAuthInput(c: AppContext): Promise<AuthInput> {
+  if (c.req.header('content-type')?.includes('application/json')) {
+    const body = await c.req.json<Partial<AuthInput>>()
+    return { email: String(body.email ?? ''), password: String(body.password ?? ''), nickname: String(body.nickname ?? '') }
+  }
+  const body = await c.req.parseBody()
+  return { email: String(body.email ?? ''), password: String(body.password ?? ''), nickname: String(body.nickname ?? '') }
+}
+
+function authFailure(c: AppContext, mode: 'login' | 'register', message: string, html: boolean, status: 400 | 401 | 409 | 500 = 400) {
+  return html ? c.redirect(`/${mode}?error=${encodeURIComponent(message)}`, 303) : jsonError(c, message, status)
+}
+
+async function registerAccount(c: AppContext, html = false) {
+  try {
+    const body = await readAuthInput(c)
+    const email = body.email.trim().toLowerCase()
+    const nickname = body.nickname.trim()
+    if (!emailPattern.test(email)) return authFailure(c, 'register', '올바른 이메일을 입력해 주세요.', html)
+    if (body.password.length < 8 || body.password.length > 72) return authFailure(c, 'register', '비밀번호는 8~72자로 입력해 주세요.', html)
+    if (nickname.length < 2 || nickname.length > 20) return authFailure(c, 'register', '닉네임은 2~20자로 입력해 주세요.', html)
+    if (await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first()) return authFailure(c, 'register', '이미 가입된 이메일이에요.', html, 409)
+    const password = await hashPassword(body.password)
+    const user: SessionUser = { id: crypto.randomUUID(), email, nickname, role: 'USER' }
+    await c.env.DB.prepare(`INSERT INTO users (id, email, password_hash, password_salt, nickname, role) VALUES (?, ?, ?, ?, ?, ?)`)
+      .bind(user.id, user.email, password.hash, password.salt, user.nickname, user.role).run()
+    await setSession(c, user)
+    return html ? c.redirect('/home', 303) : c.json({ user }, 201)
+  } catch (error) {
+    console.error(error)
+    return authFailure(c, 'register', '회원가입을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.', html, 500)
+  }
+}
+
+async function loginAccount(c: AppContext, html = false) {
+  try {
+    const body = await readAuthInput(c)
+    const email = body.email.trim().toLowerCase()
+    const user = await c.env.DB.prepare(`SELECT id, email, password_hash, password_salt, nickname, role FROM users WHERE email = ?`).bind(email).first<{ id: string; email: string; password_hash: string; password_salt: string; nickname: string; role: 'USER' | 'ADMIN' }>()
+    if (!user || !body.password || !(await verifyPassword(body.password, user.password_salt, user.password_hash))) return authFailure(c, 'login', '이메일 또는 비밀번호가 올바르지 않아요.', html, 401)
+    const session = { id: user.id, email: user.email, nickname: user.nickname, role: user.role }
+    await setSession(c, session)
+    const requestedNext = c.req.query('next')
+    const next = requestedNext?.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '/home'
+    return html ? c.redirect(next, 303) : c.json({ user: session })
+  } catch (error) {
+    console.error(error)
+    return authFailure(c, 'login', '로그인을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.', html, 500)
+  }
+}
+
 app.get('/', async (c) => c.html(<Page user={await getSession(c)}><Landing/></Page>))
-app.get('/login', async (c) => (await getSession(c)) ? c.redirect('/home') : c.html(<Page><AuthPage mode="login"/></Page>))
-app.get('/register', async (c) => (await getSession(c)) ? c.redirect('/home') : c.html(<Page><AuthPage mode="register"/></Page>))
+app.get('/login', async (c) => {
+  if (await getSession(c)) return c.redirect('/home')
+  const requestedNext = c.req.query('next')
+  const next = requestedNext?.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '/home'
+  return c.html(<Page><AuthPage mode="login" error={c.req.query('error')} next={next}/></Page>)
+})
+app.get('/register', async (c) => (await getSession(c)) ? c.redirect('/home') : c.html(<Page><AuthPage mode="register" error={c.req.query('error')}/></Page>))
 app.get('/home', async (c) => {
   const user = await getSession(c); if (!user) return c.redirect('/login?next=/home')
   return c.html(<Page user={user} title="홈 | 잇다"><HomePage user={user} reports={await listReports(c.env, undefined, 6)}/></Page>)
@@ -55,37 +114,11 @@ app.get('/lost/new', async (c) => {
   return c.html(<Page user={user} title="분실 신고 | 잇다"><ComingSoon/></Page>)
 })
 
-app.post('/api/auth/register', async (c) => {
-  try {
-    const body = await c.req.json<{ email?: string; password?: string; nickname?: string }>()
-    const email = body.email?.trim().toLowerCase() ?? ''
-    const nickname = body.nickname?.trim() ?? ''
-    if (!emailPattern.test(email)) return jsonError(c, '올바른 이메일을 입력해 주세요.')
-    if (!body.password || body.password.length < 8 || body.password.length > 72) return jsonError(c, '비밀번호는 8~72자로 입력해 주세요.')
-    if (nickname.length < 2 || nickname.length > 20) return jsonError(c, '닉네임은 2~20자로 입력해 주세요.')
-    if (await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first()) return jsonError(c, '이미 가입된 이메일이에요.', 409)
-    const password = await hashPassword(body.password)
-    const user: SessionUser = { id: crypto.randomUUID(), email, nickname, role: 'USER' }
-    await c.env.DB.prepare(`INSERT INTO users (id, email, password_hash, password_salt, nickname, role) VALUES (?, ?, ?, ?, ?, ?)`)
-      .bind(user.id, user.email, password.hash, password.salt, user.nickname, user.role).run()
-    await setSession(c, user)
-    return c.json({ user }, 201)
-  } catch (error) {
-    console.error(error); return jsonError(c, '회원가입을 처리하지 못했어요.', 500)
-  }
-})
-
-app.post('/api/auth/login', async (c) => {
-  try {
-    const body = await c.req.json<{ email?: string; password?: string }>()
-    const email = body.email?.trim().toLowerCase() ?? ''
-    const user = await c.env.DB.prepare(`SELECT id, email, password_hash, password_salt, nickname, role FROM users WHERE email = ?`).bind(email).first<{ id: string; email: string; password_hash: string; password_salt: string; nickname: string; role: 'USER' | 'ADMIN' }>()
-    if (!user || !body.password || !(await verifyPassword(body.password, user.password_salt, user.password_hash))) return jsonError(c, '이메일 또는 비밀번호가 올바르지 않아요.', 401)
-    const session = { id: user.id, email: user.email, nickname: user.nickname, role: user.role }
-    await setSession(c, session)
-    return c.json({ user: session })
-  } catch (error) { console.error(error); return jsonError(c, '로그인을 처리하지 못했어요.', 500) }
-})
+app.post('/register', (c) => registerAccount(c, true))
+app.post('/login', (c) => loginAccount(c, true))
+app.post('/logout', (c) => { clearSession(c); return c.redirect('/', 303) })
+app.post('/api/auth/register', (c) => registerAccount(c))
+app.post('/api/auth/login', (c) => loginAccount(c))
 app.post('/api/auth/logout', (c) => { clearSession(c); return c.json({ ok: true }) })
 app.get('/api/auth/me', async (c) => {
   const user = await getSession(c); return user ? c.json({ user }) : jsonError(c, '로그인이 필요해요.', 401)
@@ -158,9 +191,7 @@ app.post('/api/found-reports/:id/reprocess', async (c) => {
   return c.json({ ok: true })
 })
 
-app.notFound(async (c) => c.html(<Page user={await getSession(c)}><main class="auth-page"><section class="auth-card"><MascotFallback/><h1>페이지를 찾을 수 없어요</h1><a class="button button-primary" href="/">홈으로 돌아가기</a></section></main></Page>, 404))
+app.notFound(async (c) => c.html(<Page user={await getSession(c)}><main class="auth-page"><section class="auth-card coming-card"><Magpie pose="searching" large/><h1>페이지를 찾을 수 없어요</h1><p>주소를 다시 확인하거나 홈으로 돌아가 주세요.</p><a class="button button-primary" href="/">홈으로 돌아가기</a></section></main></Page>, 404))
 app.onError((error, c) => { console.error(error); return c.json({ error: '요청을 처리하지 못했어요.' }, 500) })
-
-function MascotFallback() { return <div class="mascot-fallback" aria-label="잇령이">잇령이</div> }
 
 export default app
