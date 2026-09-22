@@ -71,6 +71,24 @@
   const foundForm = $('[data-found-form]')
   if (foundForm) setupFoundForm(foundForm)
 
+  const lostForm = $('[data-lost-form]')
+  if (lostForm) setupLostForm(lostForm)
+
+  $('[data-rematch]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget
+    button.disabled = true
+    button.textContent = '다시 살펴보는 중…'
+    try {
+      const response = await fetch(`/api/lost-reports/${button.dataset.lostId}/rematch`, { method: 'POST', credentials: 'include' })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || '다시 찾지 못했어요.')
+      location.reload()
+    } catch (problem) {
+      button.disabled = false
+      button.textContent = problem.message || '다시 시도해 주세요.'
+    }
+  })
+
   if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => undefined))
 
   function setupFoundForm(form) {
@@ -155,6 +173,77 @@
     }
     function showError(message) { error.textContent = message; error.hidden = false; return false }
     function clearError() { error.hidden = true; error.textContent = '' }
+  }
+
+  function setupLostForm(form) {
+    const interpret = $('[data-lost-interpret]', form)
+    const structured = $('[data-lost-structured]', form)
+    const submit = $('[data-lost-submit]', form)
+    const error = $('[data-lost-error]', form)
+    const fields = $$('input, select', structured)
+    const lostAt = $('[name="lostAt"]', form)
+    const localNow = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
+    lostAt.value = localNow
+    lostAt.max = localNow
+    fields.forEach((field) => { field.disabled = true })
+
+    interpret.addEventListener('click', async () => {
+      const description = $('[name="description"]', form)
+      if (!description.checkValidity()) { description.reportValidity(); return }
+      interpret.disabled = true
+      interpret.textContent = '잇치가 특징을 정리하고 있어요…'
+      try {
+        const response = await fetch('/api/lost-reports/interpret', {
+          method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ description: description.value }),
+        })
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(result.error || '설명을 정리하지 못했어요.')
+        const summary = result.summary || {}
+        $('[name="category"]', form).value = summary.category || 'other'
+        $('[name="colors"]', form).value = (summary.colors || []).join(', ')
+        $('[name="material"]', form).value = summary.material || ''
+        $('[name="brand"]', form).value = summary.brand || ''
+        $('[name="features"]', form).value = (summary.features || []).join(', ')
+        description.value = result.description || description.value
+        fields.forEach((field) => { field.disabled = false })
+        structured.hidden = false
+        structured.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } catch (problem) {
+        alert(problem.message || '설명을 정리하지 못했어요.')
+      } finally {
+        interpret.disabled = false
+        interpret.textContent = '다시 정리하기'
+      }
+    })
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      if (structured.hidden || !form.reportValidity()) return
+      error.hidden = true
+      submit.disabled = true
+      form.classList.add('is-loading')
+      const data = new FormData(form)
+      const split = (value) => String(value || '').split(',').map((item) => item.trim()).filter(Boolean)
+      const payload = {
+        description: data.get('description'), category: data.get('category'), colors: split(data.get('colors')),
+        material: data.get('material'), brand: data.get('brand'), features: split(data.get('features')),
+        locationText: data.get('locationText'), locationGroup: data.get('locationGroup'),
+        lostAt: new Date(data.get('lostAt')).toISOString(), timePrecision: data.get('timePrecision'),
+      }
+      try {
+        const response = await fetch('/api/lost-reports', {
+          method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload),
+        })
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(result.error || '분실 신고를 등록하지 못했어요.')
+        location.href = `/lost/${result.report.id}`
+      } catch (problem) {
+        error.textContent = problem.message || '분실 신고를 등록하지 못했어요.'
+        error.hidden = false
+        submit.disabled = false
+        form.classList.remove('is-loading')
+      }
+    })
   }
 
   async function preprocessImage(file) {

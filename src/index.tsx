@@ -1,9 +1,9 @@
 import { Hono, type Context } from 'hono'
 import { clearSession, getSession, hashPassword, setSession, verifyPassword } from './auth'
-import { processNextAiJob } from './ai'
-import { createReport, findReport, listReports } from './repository'
+import { interpretLostDescription, processNextAiJob, redactSensitiveText } from './ai'
+import { createLostReport, createReport, findLostReport, findMatch, findReport, listLostReports, listMatches, listReports, rematchLostReport, rematchRecentLostReports } from './repository'
 import type { Bindings, SessionUser } from './types'
-import { AuthPage, ComingSoon, DetailPage, HomePage, Landing, NewFoundPage, Page, ProfilePage, ReportsPage } from './views'
+import { AuthPage, DetailPage, HomePage, Landing, LostDetailPage, MatchDetailPage, MatchesOverview, NewFoundPage, NewLostPage, Page, ProfilePage, ReportsPage } from './views'
 import { Itchi } from './itchi'
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -13,7 +13,10 @@ const allowedImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 app.use('*', async (c, next) => {
   if (c.req.method === 'GET' && !c.req.path.startsWith('/api/files/')) {
-    c.executionCtx.waitUntil(processNextAiJob(c.env).catch(() => false))
+    c.executionCtx.waitUntil((async () => {
+      const processedReportId = await processNextAiJob(c.env)
+      if (processedReportId) await rematchRecentLostReports(c.env)
+    })().catch(() => undefined))
   }
   await next()
 })
@@ -40,6 +43,11 @@ async function readAuthInput(c: AppContext): Promise<AuthInput> {
 
 function authFailure(c: AppContext, mode: 'login' | 'register', message: string, html: boolean, status: 400 | 401 | 409 | 500 = 400) {
   return html ? c.redirect(`/${mode}?error=${encodeURIComponent(message)}`, 303) : jsonError(c, message, status)
+}
+
+function stringList(value: unknown, limit = 10) {
+  const values = Array.isArray(value) ? value : String(value ?? '').split(',')
+  return [...new Set(values.map((item) => String(item).trim().toLowerCase()).filter(Boolean))].slice(0, limit).map((item) => item.slice(0, 40))
 }
 
 async function registerAccount(c: AppContext, html = false) {
@@ -112,7 +120,27 @@ app.get('/profile', async (c) => {
 })
 app.get('/lost/new', async (c) => {
   const user = await getSession(c); if (!user) return c.redirect('/login?next=/lost/new')
-  return c.html(<Page user={user} title="분실 신고 | 잇다"><ComingSoon/></Page>)
+  return c.html(<Page user={user} title="분실 신고 | 잇다"><NewLostPage/></Page>)
+})
+app.get('/lost/:id', async (c) => {
+  const user = await getSession(c); if (!user) return c.redirect(`/login?next=${encodeURIComponent(c.req.path)}`)
+  const report = await findLostReport(c.env, c.req.param('id'))
+  if (!report) return c.notFound()
+  if (report.userId !== user.id) return c.text('이 신고를 볼 권한이 없어요.', 403)
+  return c.html(<Page user={user} title="분실 신고 | 잇다"><LostDetailPage report={report} matches={await listMatches(c.env, report.id)}/></Page>)
+})
+app.get('/matches', async (c) => {
+  const user = await getSession(c); if (!user) return c.redirect('/login?next=/matches')
+  const reports = await listLostReports(c.env, user.id)
+  const items = await Promise.all(reports.map(async (report) => ({ report, matches: await listMatches(c.env, report.id) })))
+  return c.html(<Page user={user} title="매칭 결과 | 잇다"><MatchesOverview items={items}/></Page>)
+})
+app.get('/matches/:id', async (c) => {
+  const user = await getSession(c); if (!user) return c.redirect(`/login?next=${encodeURIComponent(c.req.path)}`)
+  const match = await findMatch(c.env, c.req.param('id')); if (!match) return c.notFound()
+  const lost = await findLostReport(c.env, match.lostReportId); if (!lost) return c.notFound()
+  if (lost.userId !== user.id) return c.text('이 후보를 볼 권한이 없어요.', 403)
+  return c.html(<Page user={user} title="후보 비교 | 잇다"><MatchDetailPage match={match} lost={lost}/></Page>)
 })
 
 app.post('/register', (c) => registerAccount(c, true))
@@ -190,6 +218,74 @@ app.post('/api/found-reports/:id/reprocess', async (c) => {
     c.env.DB.prepare(`INSERT INTO ai_jobs (id, job_type, report_type, report_id) VALUES (?, 'EXTRACT_FEATURES', 'FOUND', ?)`).bind(crypto.randomUUID(), c.req.param('id')),
   ])
   return c.json({ ok: true })
+})
+
+app.post('/api/lost-reports/interpret', async (c) => {
+  const user = await requireUser(c); if (!user) return jsonError(c, '로그인이 필요해요.', 401)
+  try {
+    const body = await c.req.json<{ description?: unknown }>()
+    const description = String(body.description ?? '').trim()
+    if (description.length < 5 || description.length > 1000) return jsonError(c, '설명을 5~1000자로 입력해 주세요.')
+    return c.json(interpretLostDescription(description))
+  } catch { return jsonError(c, '설명을 확인해 주세요.') }
+})
+
+app.post('/api/lost-reports', async (c) => {
+  const user = await requireUser(c); if (!user) return jsonError(c, '로그인이 필요해요.', 401)
+  try {
+    const body = await c.req.json<Record<string, unknown>>()
+    const description = redactSensitiveText(String(body.description ?? '')).slice(0, 1000)
+    const category = String(body.category ?? '')
+    const lostAt = String(body.lostAt ?? '')
+    const locationText = String(body.locationText ?? '').trim().slice(0, 120)
+    const locationGroup = String(body.locationGroup ?? '').trim().slice(0, 40)
+    const timePrecision = String(body.timePrecision ?? 'APPROXIMATE')
+    if (description.length < 5 || !categories.has(category)) return jsonError(c, '분실물 설명과 종류를 확인해 주세요.')
+    if (locationText.length < 2 || !locationGroup || Number.isNaN(Date.parse(lostAt))) return jsonError(c, '분실 장소와 시간을 확인해 주세요.')
+    if (!['EXACT', 'APPROXIMATE', 'UNKNOWN'].includes(timePrecision)) return jsonError(c, '시간 정확도를 확인해 주세요.')
+    const extracted = interpretLostDescription(description).attributes
+    const attributes = {
+      category,
+      colors: stringList(body.colors).length ? stringList(body.colors) : extracted.colors,
+      material: String(body.material ?? extracted.material ?? '').trim().toLowerCase().slice(0, 40) || null,
+      brand: String(body.brand ?? extracted.brand ?? '').trim().slice(0, 60) || null,
+      features: stringList(body.features).length ? stringList(body.features) : extracted.features,
+    }
+    const report = await createLostReport(c.env, { id: crypto.randomUUID(), userId: user.id, description, category, lostAt: new Date(lostAt).toISOString(), timePrecision, locationText, locationGroup, attributes })
+    return c.json({ report, matches: report ? await listMatches(c.env, report.id) : [] }, 201)
+  } catch (error) { console.error(error); return jsonError(c, '분실 신고를 등록하지 못했어요.', 500) }
+})
+
+app.get('/api/lost-reports/:id', async (c) => {
+  const user = await requireUser(c); if (!user) return jsonError(c, '로그인이 필요해요.', 401)
+  const report = await findLostReport(c.env, c.req.param('id')); if (!report) return jsonError(c, '분실 신고를 찾을 수 없어요.', 404)
+  if (report.userId !== user.id) return jsonError(c, '이 신고를 볼 권한이 없어요.', 403)
+  return c.json({ report })
+})
+
+app.get('/api/lost-reports/:id/matches', async (c) => {
+  const user = await requireUser(c); if (!user) return jsonError(c, '로그인이 필요해요.', 401)
+  const report = await findLostReport(c.env, c.req.param('id')); if (!report) return jsonError(c, '분실 신고를 찾을 수 없어요.', 404)
+  if (report.userId !== user.id) return jsonError(c, '이 후보를 볼 권한이 없어요.', 403)
+  return c.json({ matches: await listMatches(c.env, report.id) })
+})
+
+app.post('/api/lost-reports/:id/rematch', async (c) => {
+  const user = await requireUser(c); if (!user) return jsonError(c, '로그인이 필요해요.', 401)
+  const report = await findLostReport(c.env, c.req.param('id')); if (!report) return jsonError(c, '분실 신고를 찾을 수 없어요.', 404)
+  if (report.userId !== user.id) return jsonError(c, '다시 찾을 권한이 없어요.', 403)
+  try {
+    const count = await rematchLostReport(c.env, report.id)
+    return c.json({ ok: true, count, matches: await listMatches(c.env, report.id) })
+  } catch (error) { console.error(error); return jsonError(c, '후보를 다시 찾지 못했어요.', 500) }
+})
+
+app.get('/api/matches/:id', async (c) => {
+  const user = await requireUser(c); if (!user) return jsonError(c, '로그인이 필요해요.', 401)
+  const match = await findMatch(c.env, c.req.param('id')); if (!match) return jsonError(c, '후보를 찾을 수 없어요.', 404)
+  const lost = await findLostReport(c.env, match.lostReportId)
+  if (!lost || lost.userId !== user.id) return jsonError(c, '이 후보를 볼 권한이 없어요.', 403)
+  return c.json({ match, lost })
 })
 
 app.notFound(async (c) => c.html(<Page user={await getSession(c)}><main class="auth-page"><section class="auth-card coming-card"><Itchi pose="search" size={220}/><h1>페이지를 찾을 수 없어요</h1><p>주소를 다시 확인하거나 홈으로 돌아가 주세요.</p><a class="button button-primary" href="/">홈으로 돌아가기</a></section></main></Page>, 404))

@@ -1,4 +1,4 @@
-const CACHE = 'itda-itchi-shell-v4'
+const CACHE = 'itda-phase45-shell-v5'
 const SHELL = ['/static/styles.css', '/static/app.js', '/icon.svg', '/manifest.webmanifest']
 
 self.addEventListener('install', (event) => {

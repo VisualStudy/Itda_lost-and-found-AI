@@ -1,6 +1,6 @@
 import type { Child } from 'hono/jsx'
 import { Itchi, ItchiSays } from './itchi'
-import type { FoundReport, SessionUser } from './types'
+import type { CandidateMatch, FoundReport, LostReport, SessionUser } from './types'
 
 export const categoryLabels: Record<string, string> = {
   wallet: '지갑', bag: '가방', electronics: '전자기기', keys: '열쇠', clothing: '의류',
@@ -25,7 +25,7 @@ function MobileNav({ user }: { user?: SessionUser | null }) {
     <a href="/home"><span>⌂</span>홈</a>
     <a href="/found"><span>⌕</span>습득물</a>
     <a href="/lost/new"><span>◉</span>분실물</a>
-    <a href="/my/reports"><span>▣</span>내 신고</a>
+    <a href="/matches"><span>▣</span>매칭</a>
     <a href={user ? '/profile' : '/login'}><span>●</span>{user ? '나' : '로그인'}</a>
   </nav>
 }
@@ -40,7 +40,7 @@ export function Page({ children, user, title = '잇다 — 분실물 연결 서�
     <a class="skip-link" href="#main-content">본문 바로가기</a>
     <header class="site-header"><div class="header-inner"><Brand/><nav class="desktop-nav" aria-label="주요 메뉴">
       <a href="/home">홈</a><a href="/found">주운 물건</a><a href="/lost/new">잃어버린 물건</a>
-      {user ? <><a href="/my/reports">내 신고</a><a href="/profile" class="user-chip">{user.nickname}</a><form action="/logout" method="post" class="logout-form"><button class="text-button" type="submit">로그아웃</button></form></> : <><a href="/login">로그인</a><a href="/register" class="button button-accent button-small">시작하기</a></>}
+      {user ? <><a href="/matches">매칭</a><a href="/my/reports">내 신고</a><a href="/profile" class="user-chip">{user.nickname}</a><form action="/logout" method="post" class="logout-form"><button class="text-button" type="submit">로그아웃</button></form></> : <><a href="/login">로그인</a><a href="/register" class="button button-accent button-small">시작하기</a></>}
     </nav></div></header>
     {children}
     <footer class="site-footer"><div class="footer-brand"><Itchi pose="wink" size={70}/><div><strong>잇다 · Itda</strong><p>잃어버린 것과 다시 이어지는 곳</p></div></div><small>© 2026 ITDA · 어디서든 함께 찾는 분실물 연결 서비스</small></footer>
@@ -146,6 +146,85 @@ export function ProfilePage({ user }: { user: SessionUser }) {
   return <main class="page-shell narrow-page" id="main-content"><section class="profile-card"><Itchi pose="wink" size={190}/><span class="eyebrow">내 프로필</span><h1>{user.nickname}</h1><dl><div><dt>닉네임</dt><dd>{user.nickname}</dd></div><div><dt>이메일</dt><dd>{user.email}</dd></div></dl><p>등록한 물건과 새 소식은 내 신고 메뉴에서 확인할 수 있어요.</p></section></main>
 }
 
+export function NewLostPage() {
+  return <main class="page-shell" id="main-content"><section class="lost-flow-shell">
+    <header class="form-heading"><Itchi pose="greet" size={140}/><ItchiSays tone="mint">기억나는 것부터 편하게 말해 주세요. 제가 하나씩 정리할게요.</ItchiSays><h1>잃어버린 물건 찾기</h1><p>설명을 정리한 뒤 등록된 습득물과 바로 비교해요.</p></header>
+    <form class="lost-chat-form" data-lost-form>
+      <section class="chat-message itchi-message"><Itchi pose="wink" size={74}/><div><strong>무엇을 잃어버렸나요?</strong><p>색상, 모양, 브랜드, 눈에 띄는 특징을 자유롭게 적어 주세요.</p></div></section>
+      <label class="chat-input-label"><span class="sr-only">분실물 설명</span><textarea class="form-control" name="description" required minlength={5} maxlength={1000} placeholder="예: 검은색 카드지갑이고 앞에 작은 금색 로고가 있어요."></textarea></label>
+      <button type="button" class="button button-accent button-full" data-lost-interpret>잇치에게 정리 부탁하기</button>
+      <section class="lost-interpretation" data-lost-structured hidden>
+        <div class="chat-message itchi-message"><Itchi pose="point" size={82}/><div><strong>이렇게 이해했어요</strong><p>다른 부분이 있다면 바로 고쳐 주세요.</p></div></div>
+        <div class="structured-grid">
+          <label class="form-label">물건 종류<select class="form-control" name="category" required>{Object.entries(categoryLabels).map(([value,label]) => <option value={value}>{label}</option>)}</select></label>
+          <label class="form-label">색상<input class="form-control" name="colors" placeholder="예: black, gold"/></label>
+          <label class="form-label">재질<input class="form-control" name="material" placeholder="예: leather"/></label>
+          <label class="form-label">브랜드<input class="form-control" name="brand" placeholder="알고 있다면 입력"/></label>
+          <label class="form-label structured-wide">눈에 띄는 특징<input class="form-control" name="features" placeholder="쉼표로 구분해 주세요"/></label>
+        </div>
+        <div class="chat-message itchi-message"><Itchi pose="search" size={78}/><div><strong>어디서, 언제 잃어버렸나요?</strong><p>대략적인 정보여도 후보를 찾는 데 도움이 돼요.</p></div></div>
+        <div class="structured-grid">
+          <label class="form-label">장소 종류<select class="form-control" name="locationGroup" required><option>대중교통</option><option>상점·카페</option><option>학교·교육시설</option><option>공공시설</option><option>회사·업무시설</option><option>주거지역</option><option>공원·야외</option><option>기타</option></select></label>
+          <label class="form-label">분실 장소<input class="form-control" name="locationText" required minlength={2} maxlength={120} placeholder="예: 시청역 2번 출구 근처"/></label>
+          <label class="form-label">분실 날짜와 시간<input class="form-control" name="lostAt" type="datetime-local" required/></label>
+          <label class="form-label">시간 정확도<select class="form-control" name="timePrecision"><option value="EXACT">거의 정확해요</option><option value="APPROXIMATE" selected>대략 이쯤이에요</option><option value="UNKNOWN">정확한 시간을 모르겠어요</option></select></label>
+        </div>
+        <aside class="privacy-note">연락처·카드번호·식별번호는 설명에서 자동으로 가려요. 실제 주인만 아는 정보는 공개 설명에 적지 마세요.</aside>
+        <p class="form-error" data-lost-error role="alert" hidden></p>
+        <button type="submit" class="button button-accent button-large button-full" data-lost-submit><span>신고하고 닮은 물건 찾기</span><span class="button-spinner" aria-hidden="true"></span></button>
+      </section>
+    </form>
+  </section></main>
+}
+
+function attributeText(report: LostReport, key: 'colors' | 'features') {
+  const value = report.attributes[key]
+  return Array.isArray(value) && value.length ? value.join(', ') : '입력 정보 없음'
+}
+
+export function LostDetailPage({ report, matches }: { report: LostReport; matches: CandidateMatch[] }) {
+  return <main class="page-shell" id="main-content"><section class="lost-summary">
+    <div><span class="eyebrow">내 분실 신고</span><h1>{categoryLabels[report.category] ?? '분실물'}을 찾고 있어요</h1><p>{report.description}</p></div>
+    <Itchi pose={matches.length ? 'found' : 'search'} size={170}/>
+  </section>
+  <dl class="lost-meta-grid"><div><dt>분실 장소</dt><dd>{report.locationText}<small>{report.locationGroup}</small></dd></div><div><dt>분실 시간</dt><dd>{formatDate(report.lostAt)}<small>{report.timePrecision === 'EXACT' ? '거의 정확한 시간' : '대략적인 시간'}</small></dd></div><div><dt>색상</dt><dd>{attributeText(report, 'colors')}</dd></div><div><dt>특징</dt><dd>{attributeText(report, 'features')}</dd></div></dl>
+  <section class="match-results-section"><div class="section-title-row"><div><span class="eyebrow">잇치가 비교한 결과</span><h2>{matches.length ? `닮은 물건 ${matches.length}개` : '아직 가까운 후보가 없어요'}</h2></div><button class="button button-secondary" type="button" data-rematch data-lost-id={report.id}>다시 찾아보기</button></div>
+  {matches.length ? <div class="match-grid">{matches.map((match) => <MatchCard match={match}/>)}</div> : <div class="empty-state"><Itchi pose="sad" size={150}/><h3>새 습득물이 들어오면 다시 비교할 수 있어요</h3><p>설명이나 장소를 조금 더 자세히 적으면 후보가 더 잘 보일 수 있어요.</p></div>}
+  </section></main>
+}
+
+export function MatchCard({ match }: { match: CandidateMatch }) {
+  const image = match.foundReport.images[0]
+  return <a class="match-card" href={`/matches/${match.id}`}><div class="match-image">{image ? <img src={image.thumbnailUrl} alt={`${match.foundReport.title} 습득물 사진`}/> : <Itchi pose="search" size={120}/>}<span class="match-score">일치도 {match.finalScore}</span></div><div class="match-card-body"><span class="category-label">{categoryLabels[match.foundReport.category] ?? '기타'}</span><h3>{match.foundReport.title}</h3><p>📍 {match.foundReport.locationText}</p><ul>{match.explanations.slice(0,3).map((reason) => <li>✓ {reason}</li>)}</ul><strong>비교해서 보기 →</strong></div></a>
+}
+
+export function MatchesOverview({ items }: { items: Array<{ report: LostReport; matches: CandidateMatch[] }> }) {
+  return <main class="page-shell" id="main-content"><div class="page-heading-row"><div><span class="eyebrow">내 매칭</span><h1>닮은 물건을 모아봤어요</h1><p>일치도는 확률이 아니라 여러 특징이 비슷한 정도를 나타내요.</p></div><a class="button button-accent" href="/lost/new">＋ 새 분실 신고</a></div>{items.length ? <div class="lost-report-list">{items.map(({ report, matches }) => <article class="lost-report-row"><div><span class="status-badge">{categoryLabels[report.category] ?? '분실물'}</span><h2>{report.description}</h2><p>{report.locationText} · {formatDate(report.lostAt)}</p></div><div class="lost-report-match-count"><strong>{matches.length}</strong><span>후보</span><a href={`/lost/${report.id}`}>확인하기 →</a></div></article>)}</div> : <div class="empty-state"><Itchi pose="search" size={170}/><h3>아직 분실 신고가 없어요</h3><p>기억나는 대로 알려주면 잇치가 닮은 물건을 찾아볼게요.</p><a class="button button-accent" href="/lost/new">분실 신고 시작하기</a></div>}</main>
+}
+
+function scoreLabel(value: number) {
+  if (value >= 80) return '매우 비슷해요'
+  if (value >= 60) return '비슷한 점이 많아요'
+  if (value >= 40) return '확인해 볼 만해요'
+  return '일부 특징이 비슷해요'
+}
+
+export function MatchDetailPage({ match, lost }: { match: CandidateMatch; lost: LostReport }) {
+  const found = match.foundReport
+  const image = found.images[0]
+  const rows = [
+    ['설명', lost.description, found.description],
+    ['종류', categoryLabels[lost.category] ?? lost.category, categoryLabels[found.category] ?? found.category],
+    ['색상', attributeText(lost, 'colors'), Array.isArray(found.attributes.colors) ? found.attributes.colors.join(', ') : '확인 필요'],
+    ['장소', lost.locationText, found.locationText],
+    ['시간', formatDate(lost.lostAt), formatDate(found.foundAt)],
+  ]
+  return <main class="page-shell" id="main-content"><a class="back-link" href={`/lost/${lost.id}`}>← 후보 목록으로</a><section class="match-detail-hero"><div><span class="eyebrow">잇치의 비교 결과</span><h1>일치도 {match.finalScore}</h1><p>{scoreLabel(match.finalScore)}. 실제 주인 여부는 직접 확인해 주세요.</p></div><Itchi pose="found" size={180}/></section>
+  <section class="comparison-grid"><article><span class="comparison-label">내 신고</span><h2>{categoryLabels[lost.category] ?? '분실물'}</h2><p>{lost.description}</p></article><div class="comparison-vs">VS</div><article><span class="comparison-label found">습득물</span>{image ? <img src={image.publicUrl} alt={`${found.title} 습득물 사진`}/> : <Itchi pose="search" size={150}/>}<h2>{found.title}</h2><p>{found.description}</p></article></section>
+  <section class="score-panel"><h2>어떤 점을 비교했나요?</h2><div class="score-bars">{[['설명', match.textScore], ['사진·색상', match.visualScore], ['특징', match.attributeScore], ['장소', match.locationScore], ['시간', match.timeScore], ['글자·브랜드', match.ocrScore]].map(([label,value]) => <div class="score-row"><span>{label}</span><div><i style={`width:${value}%`}></i></div><strong>{value}</strong></div>)}</div><ul class="explanation-list">{match.explanations.map((reason) => <li>✓ {reason}</li>)}</ul></section>
+  <aside class="safety-card match-safety"><strong>이 물건이 맞는지 직접 확인해 주세요</strong><p>사진에 보이지 않는 특징이나 안에 있던 물건을 통해 실제 주인인지 확인하는 것이 안전해요.</p></aside><a class="button button-secondary button-full" href={`/found/${found.id}`}>습득물 상세 보기</a></main>
+}
+
 export function ComingSoon() {
-  return <main class="auth-page" id="main-content"><section class="auth-card coming-card"><Itchi pose="search" size={210}/><ItchiSays tone="mint">기억나는 대로 편하게 이야기해 주세요.</ItchiSays><h1>분실 신고를 준비하고 있어요</h1><p>잇치가 닮은 후보를 모아드리는 흐름을 곧 만나볼 수 있어요.</p><a class="button button-accent" href="/home">홈으로 돌아가기</a></section></main>
+  return <main class="auth-page" id="main-content"><section class="auth-card coming-card"><Itchi pose="search" size={210}/><ItchiSays tone="mint">기억나는 대로 편하게 이야기해 주세요.</ItchiSays><h1>새 기능을 준비하고 있어요</h1><p>조금만 기다려 주세요.</p><a class="button button-accent" href="/home">홈으로 돌아가기</a></section></main>
 }

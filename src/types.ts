@@ -31,6 +31,38 @@ export type FoundReport = {
   aiFeatures?: AiFeature | null
 }
 
+export type LostReport = {
+  id: string
+  userId: string
+  description: string
+  category: string
+  lostAt: string
+  timePrecision: string
+  locationText: string
+  locationGroup: string
+  attributes: Record<string, unknown>
+  aiStatus: 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED'
+  status: 'OPEN' | 'MATCHED' | 'CLOSED'
+  createdAt: string
+  aiFeatures?: AiFeature | null
+}
+
+export type CandidateMatch = {
+  id: string
+  lostReportId: string
+  foundReportId: string
+  finalScore: number
+  textScore: number
+  visualScore: number
+  attributeScore: number
+  locationScore: number
+  timeScore: number
+  ocrScore: number
+  explanations: string[]
+  foundReport: FoundReport
+  createdAt: string
+}
+
 export type ReportImage = {
   id: string
   publicUrl: string

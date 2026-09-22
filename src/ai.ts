@@ -12,17 +12,44 @@ const colors: Record<string, string[]> = {
   gray: ['회색', '그레이', '은색'], brown: ['갈색', '브라운'], yellow: ['노랑', '금색', '골드'],
 }
 const materials: Record<string, string[]> = { leather: ['가죽'], fabric: ['천', '패브릭'], metal: ['금속', '메탈'], plastic: ['플라스틱'], paper: ['종이'] }
+const knownBrands = ['삼성', '애플', '샤넬', '구찌', '루이비통', '프라다', '나이키', '아디다스', '코치', '마이클코어스', '에어팟', '갤럭시']
 
 function detect(dictionary: Record<string, string[]>, text: string) {
   return Object.entries(dictionary).filter(([, words]) => words.some((word) => text.includes(word))).map(([key]) => key)
 }
 
 export function extractAttributes(text: string, fallbackCategory = 'other') {
-  const category = detect(categories, text)[0] ?? fallbackCategory
-  const detectedColors = detect(colors, text)
-  const material = detect(materials, text)[0] ?? null
-  const features = ['로고', '장식', '스크래치', '스티커', '무늬', '지퍼', '고리'].filter((word) => text.includes(word))
-  return { category, colors: detectedColors, material, features }
+  const normalized = text.toLowerCase().normalize('NFKC')
+  const category = detect(categories, normalized)[0] ?? fallbackCategory
+  const detectedColors = detect(colors, normalized)
+  const material = detect(materials, normalized)[0] ?? null
+  const features = ['로고', '장식', '스크래치', '스티커', '무늬', '지퍼', '고리', '이니셜', '키링', '흠집'].filter((word) => normalized.includes(word))
+  const brand = knownBrands.find((candidate) => normalized.includes(candidate.toLowerCase())) ?? null
+  return { category, colors: detectedColors, material, brand, features }
+}
+
+export function redactSensitiveText(text: string) {
+  return text
+    .replace(/\b01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}\b/g, '[연락처 비공개]')
+    .replace(/\b\d{6}[-.\s]?\d{7}\b/g, '[식별번호 비공개]')
+    .replace(/\b(?:\d[ -]*?){12,19}\b/g, '[카드번호 비공개]')
+    .trim()
+}
+
+export function interpretLostDescription(text: string) {
+  const description = redactSensitiveText(text)
+  const attributes = extractAttributes(description)
+  return {
+    description,
+    attributes,
+    summary: {
+      category: attributes.category,
+      colors: attributes.colors,
+      material: attributes.material,
+      brand: attributes.brand,
+      features: attributes.features,
+    },
+  }
 }
 
 export function createLocalTextEmbedding(text: string, dimensions = 64) {
@@ -57,7 +84,7 @@ export async function processNextAiJob(env: Bindings) {
       .bind(crypto.randomUUID(), job.report_id, JSON.stringify(createLocalTextEmbedding(`${report.title} ${report.description}`)), JSON.stringify(imageEmbedding), JSON.stringify(attributes)).run()
     await env.DB.prepare(`UPDATE ai_jobs SET status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(job.id).run()
     await env.DB.prepare(`UPDATE found_reports SET ai_status = 'READY', attributes_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(JSON.stringify(attributes), job.report_id).run()
-    return true
+    return job.report_id
   } catch (error) {
     await env.DB.prepare(`UPDATE ai_jobs SET status = 'FAILED', error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(error instanceof Error ? error.message : 'UNKNOWN', job.id).run()
     await env.DB.prepare(`UPDATE found_reports SET ai_status = 'FAILED' WHERE id = ?`).bind(job.report_id).run()

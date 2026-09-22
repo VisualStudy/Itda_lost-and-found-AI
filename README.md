@@ -6,7 +6,9 @@
 
 - Phase 1: Hosted 기반, 디자인, D1 인증 완료
 - Phase 2: 습득물 등록, R2 이미지 업로드, 목록/상세 완료
-- Phase 3: 로컬 특징 추출 baseline 시작
+- Phase 3: 로컬 특징 추출 baseline 완료
+- Phase 4: 자연어 분실 신고·구조화·D1 저장 완료
+- Phase 5: 후보 검색·점수 계산·재정렬·설명 화면 완료
 - 공식 까치 마스코트 `잇치(Itchi)` 리브랜드 반영
 - Genspark Hosted 잇치 리브랜드 운영 배포 완료
 
@@ -40,6 +42,11 @@
 4. Worker에서 한국어 사전 기반 category/color/material/feature 추출
 5. 64차원 deterministic text hash embedding 생성
 6. D1 `ai_features` 저장 및 `ai_status=READY`
+7. 분실 설명에서 특징을 추출하고 사용자가 보정한 뒤 `lost_reports` 저장
+8. 최대 100개 습득물 후보 검색 후 텍스트·사진 대리 신호·속성·장소·시간·OCR 점수 결합
+9. 상위 20개 후보 재정렬 및 규칙 기반 비교 이유 생성
+
+가중치는 `src/matching.ts`의 `MATCHING_CONFIG`에서 관리하며, 점수는 확률이 아닌 비슷한 정도로만 표시합니다.
 
 향후 `ImageEmbeddingProvider`, `TextEmbeddingProvider`, `OcrProvider` 인터페이스에 OpenCLIP, multilingual-e5/BGE, PaddleOCR self-hosted adapter를 연결합니다.
 
@@ -77,6 +84,9 @@ npm run build
 → Found Report 생성
 → DB AI Job 처리
 → ai_features 저장
+→ 자연어 분실 신고 및 사용자 보정
+→ Lost Report embedding/attributes 저장
+→ 후보 검색·재정렬·비교 이유 생성
 → 목록/상세 표시
 ```
 
@@ -86,8 +96,9 @@ npm run build
 - `/login`, `/register` — 네이티브 폼 fallback 및 4단계 상호작용 상태
 - `/home` — 로그인 사용자 홈
 - `/found`, `/found/new`, `/found/:id` — 습득물 목록·5단계 등록·상세
+- `/lost/new`, `/lost/:id` — 자연어 분실 신고·구조화 확인·후보 목록
+- `/matches`, `/matches/:id` — 내 매칭 모아보기·후보 상세 비교
 - `/my/reports`, `/profile` — 내 신고·프로필
-- `/lost/new` — 분실 신고 후속 Phase 안내
 
 ## API
 
@@ -98,14 +109,22 @@ npm run build
 - `GET|POST /api/found-reports`
 - `GET /api/found-reports/:id`
 - `POST /api/found-reports/:id/reprocess`
+- `POST /api/lost-reports/interpret`
+- `POST /api/lost-reports`
+- `GET /api/lost-reports/:id`
+- `GET /api/lost-reports/:id/matches`
+- `POST /api/lost-reports/:id/rematch`
+- `GET /api/matches/:id`
 
 ## 데이터
 
 - `users`
 - `found_reports`
+- `lost_reports`
 - `report_images`
 - `ai_jobs`
 - `ai_features`
+- `candidate_matches`
 
 ## Production 보안
 
@@ -113,16 +132,14 @@ npm run build
 
 ## 아직 구현하지 않은 기능
 
-1. Lost Report 자연어 입력/구조화
-2. Found ↔ Lost 후보 retrieval
-3. multimodal scoring/re-ranking
-4. rule-based match explanation
-5. OpenCLIP/e5/PaddleOCR self-hosted adapter
-6. Feedback 및 Connection Request
+1. OpenCLIP/e5/PaddleOCR self-hosted adapter
+2. 후보 피드백(내 물건 같아요/아니에요/잘 모르겠어요)
+3. 습득자 연결 요청과 비공개 소유권 확인
+4. 알림 및 운영자 진단 화면
 
 ## 권장 다음 단계
 
-1. 분실 신고 자연어 대화 흐름 구현
-2. D1 후보 검색과 설명 가능한 점수 조합 구현
-3. 실제 사용성 테스트를 바탕으로 모바일 등록 흐름 개선
+1. Phase 6 후보 피드백과 Phase 7 연결 요청 구현
+2. 실제 사용성 테스트를 바탕으로 모바일 대화 흐름 개선
+3. OpenCLIP/e5 호환 서비스 연결로 텍스트↔이미지 점수 고도화
 4. 접근성 및 저사양 기기 성능 회귀 테스트
