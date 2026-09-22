@@ -10,7 +10,7 @@
 - Phase 4: 자연어 분실 신고·구조화·D1 저장 완료
 - Phase 5: 후보 검색·점수 계산·재정렬·설명 화면 완료
 - 공식 까치 마스코트 `잇치(Itchi)` 리브랜드 반영
-- Genspark Hosted 잇치 리브랜드 운영 배포 완료
+- Genspark Hosted 잇치 리브랜드 및 Phase 4·5 운영 배포 완료
 
 ## UX 디자인
 
