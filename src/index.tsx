@@ -3,7 +3,8 @@ import { clearSession, getSession, hashPassword, setSession, verifyPassword } fr
 import { processNextAiJob } from './ai'
 import { createReport, findReport, listReports } from './repository'
 import type { Bindings, SessionUser } from './types'
-import { AuthPage, ComingSoon, DetailPage, HomePage, Landing, Magpie, NewFoundPage, Page, ProfilePage, ReportsPage } from './views'
+import { AuthPage, ComingSoon, DetailPage, HomePage, Landing, NewFoundPage, Page, ProfilePage, ReportsPage } from './views'
+import { Itchi } from './itchi'
 
 const app = new Hono<{ Bindings: Bindings }>()
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -191,7 +192,7 @@ app.post('/api/found-reports/:id/reprocess', async (c) => {
   return c.json({ ok: true })
 })
 
-app.notFound(async (c) => c.html(<Page user={await getSession(c)}><main class="auth-page"><section class="auth-card coming-card"><Magpie pose="searching" large/><h1>페이지를 찾을 수 없어요</h1><p>주소를 다시 확인하거나 홈으로 돌아가 주세요.</p><a class="button button-primary" href="/">홈으로 돌아가기</a></section></main></Page>, 404))
+app.notFound(async (c) => c.html(<Page user={await getSession(c)}><main class="auth-page"><section class="auth-card coming-card"><Itchi pose="search" size={220}/><h1>페이지를 찾을 수 없어요</h1><p>주소를 다시 확인하거나 홈으로 돌아가 주세요.</p><a class="button button-primary" href="/">홈으로 돌아가기</a></section></main></Page>, 404))
 app.onError((error, c) => { console.error(error); return c.json({ error: '요청을 처리하지 못했어요.' }, 500) })
 
 export default app

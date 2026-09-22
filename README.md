@@ -1,23 +1,25 @@
 # Itda(잇다)
 
-외부 유료 AI API 없이 분실물 설명과 습득물 사진을 비교하는 AI 분실물 매칭 서비스입니다.
+잇치와 함께 잃어버린 물건과 발견된 물건을 다시 연결하는 AI 보조 분실물 서비스입니다. 특정 학교나 기관에 한정하지 않고 어디서든 사용할 수 있도록 설계했습니다.
 
 ## 현재 상태
 
 - Phase 1: Hosted 기반, 디자인, D1 인증 완료
 - Phase 2: 습득물 등록, R2 이미지 업로드, 목록/상세 완료
-- Phase 3: 로컬 AI Feature Extraction baseline 시작
-- Genspark Hosted 운영 배포 완료
+- Phase 3: 로컬 특징 추출 baseline 시작
+- 공식 까치 마스코트 `잇치(Itchi)` 리브랜드 반영
+- Genspark Hosted 운영 배포 완료(신규 리브랜드 재배포 예정)
 
 ## UX 디자인
 
-- 순천대학교 해커톤 레퍼런스를 바탕으로 한 까치 마스코트 `잇까치`
-- 전달, 탐색, 발견 축하, 사진 확인의 4가지 상태별 SVG 포즈
-- 네이비·민트·코랄·골드 브랜드 팔레트
-- 분실물 등록 과정을 한눈에 보여주는 여정 UI
+- 공식 까치 마스코트 `잇치(Itchi)`와 9가지 UX 포즈
+- Palette A `Magpie Nature`: 딥 네이비·민트·코랄·옐로·웜 크림
+- 모바일 하단 내비게이션과 데스크톱 히어로/3단계 안내
+- 로그인·회원가입의 idle/loading/error/success 상태별 잇치 반응
 - JavaScript 실패 시에도 동작하는 네이티브 회원가입·로그인·로그아웃 폼
 - 비밀번호 표시 전환, 본문 바로가기, 44px 이상 터치 타깃
 - 사용자 화면의 기술 중심 문구를 행동 중심 안내 문구로 교체
+- 학교·대중교통·상점·공공시설·주거지역 등 범용 장소 분류
 
 ## Hosted 기술 스택
 
@@ -78,14 +80,14 @@ npm run build
 → 목록/상세 표시
 ```
 
-## 화면
+## 화면 및 진입 URI
 
-- `/` 랜딩
-- `/login`, `/register`
-- `/home`
-- `/found`, `/found/new`, `/found/:id`
-- `/my/reports`, `/profile`
-- `/lost/new` 후속 Phase 안내
+- `/` — 잇치 랜딩, 최근 습득물
+- `/login`, `/register` — 네이티브 폼 fallback 및 4단계 상호작용 상태
+- `/home` — 로그인 사용자 홈
+- `/found`, `/found/new`, `/found/:id` — 습득물 목록·5단계 등록·상세
+- `/my/reports`, `/profile` — 내 신고·프로필
+- `/lost/new` — 분실 신고 후속 Phase 안내
 
 ## API
 
@@ -109,7 +111,7 @@ npm run build
 
 `SESSION_SECRET`은 Genspark Hosted Worker secret으로 설정합니다. 원본 이미지는 `private/` R2 key에 저장하며 공개 API는 `public/`, `thumb/` key만 제공합니다.
 
-## 다음 구현
+## 아직 구현하지 않은 기능
 
 1. Lost Report 자연어 입력/구조화
 2. Found ↔ Lost 후보 retrieval
@@ -117,3 +119,10 @@ npm run build
 4. rule-based match explanation
 5. OpenCLIP/e5/PaddleOCR self-hosted adapter
 6. Feedback 및 Connection Request
+
+## 권장 다음 단계
+
+1. 분실 신고 자연어 대화 흐름 구현
+2. D1 후보 검색과 설명 가능한 점수 조합 구현
+3. 실제 사용성 테스트를 바탕으로 모바일 등록 흐름 개선
+4. 접근성 및 저사양 기기 성능 회귀 테스트

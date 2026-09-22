@@ -5,7 +5,7 @@
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)]
 
   $('[data-logout]')?.addEventListener('click', async () => {
-    await fetch('/api/auth/logout', { method: 'POST' })
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
     location.href = '/'
   })
 
@@ -20,23 +20,52 @@
 
   const authForm = $('[data-auth-form]')
   if (authForm) {
+    const authStates = $('[data-auth-states]')
+    const error = $('[data-form-error]', authForm)
+    const button = $('[data-auth-submit]', authForm)
+
+    const setAuthState = (state) => {
+      if (authStates) authStates.dataset.current = state
+      authForm.classList.toggle('is-loading', state === 'loading')
+      authForm.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false')
+    }
+
     authForm.addEventListener('submit', async (event) => {
       event.preventDefault()
-      const error = $('[data-form-error]', authForm)
-      const button = $('button[type="submit"]', authForm)
-      error.hidden = true; button.disabled = true; button.textContent = '잠시만요…'
+      error.hidden = true
+      error.textContent = ''
+      button.disabled = true
+      setAuthState('loading')
+
       try {
         const payload = Object.fromEntries(new FormData(authForm).entries())
-        const response = await fetch(`/api/auth/${authForm.dataset.mode}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-        const data = await response.json()
-        if (!response.ok) throw new Error(data.error || '요청을 처리하지 못했어요.')
+        const response = await fetch(`/api/auth/${authForm.dataset.mode}`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(data.error || '입력한 정보를 다시 확인해 주세요.')
+
+        setAuthState('success')
         const next = new URLSearchParams(location.search).get('next')
-        location.href = next && next.startsWith('/') ? next : '/home'
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : '/home'
       } catch (problem) {
-        error.textContent = problem.message; error.hidden = false
-        button.disabled = false; button.textContent = authForm.dataset.mode === 'register' ? '잇다 시작하기 →' : '로그인 →'
+        const networkError = problem instanceof TypeError
+        error.textContent = networkError ? '네트워크 연결을 확인하고 다시 시도해 주세요.' : (problem.message || '입력한 정보를 다시 확인해 주세요.')
+        error.hidden = false
+        button.disabled = false
+        setAuthState('error')
+        error.focus?.()
       }
     })
+
+    $$('input', authForm).forEach((input) => input.addEventListener('input', () => {
+      if (authStates?.dataset.current === 'error') setAuthState('idle')
+      if (!error.hidden) { error.hidden = true; error.textContent = '' }
+    }))
   }
 
   const foundForm = $('[data-found-form]')
@@ -110,14 +139,14 @@
           submit.textContent = `사진 ${index + 1}/${files.length} 처리 중…`
           const processed = await preprocessImage(files[index])
           const upload = new FormData(); upload.append('original', files[index]); upload.append('public', processed.publicBlob, 'public-clean.webp'); upload.append('thumbnail', processed.thumbnailBlob, 'thumbnail.webp'); upload.append('width', String(processed.width)); upload.append('height', String(processed.height)); upload.append('features', JSON.stringify(processed.features))
-          const response = await fetch('/api/uploads/images', { method: 'POST', body: upload })
+          const response = await fetch('/api/uploads/images', { method: 'POST', credentials: 'include', body: upload })
           const result = await response.json(); if (!response.ok) throw new Error(result.error)
           imageIds.push(result.image.id)
         }
         submit.textContent = '습득물 등록 중…'
         const data = new FormData(form)
         const payload = { title: data.get('title'), description: data.get('description'), category: data.get('category'), foundAt: new Date(data.get('foundAt')).toISOString(), timePrecision: data.get('timePrecision'), locationText: data.get('locationText'), locationGroup: data.get('locationGroup'), imageIds }
-        const response = await fetch('/api/found-reports', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+        const response = await fetch('/api/found-reports', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
         const result = await response.json(); if (!response.ok) throw new Error(result.error)
         location.href = `/found/${result.report.id}?created=1`
       } catch (problem) {
