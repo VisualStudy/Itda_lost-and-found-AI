@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+dist/
+.env
+.env.local
+.dev.vars
+*.log
+.pm2/
+data/*.db
+data/*.db-*
+data/uploads/
+coverage/
+*.tsbuildinfo
+.DS_Store
+*.tar.gz
+*.zip
