@@ -1,0 +1,2 @@
+-- Hosted-safe seed is intentionally empty.
+-- Create users through /register so passwords are hashed with Web Crypto PBKDF2.

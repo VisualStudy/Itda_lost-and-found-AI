@@ -1,43 +1,26 @@
 {
   "name": "itda",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev -H 0.0.0.0 -p 3000",
-    "build": "next build",
-    "start": "next start -H 0.0.0.0 -p 3000",
-    "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "db:seed": "tsx scripts/seed.ts",
-    "db:reset": "rm -f data/itda.db data/itda.db-shm data/itda.db-wal && npm run db:migrate && npm run db:seed",
-    "test": "vitest run"
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "build": "vite build",
+    "dev:sandbox": "wrangler pages dev dist --ip 0.0.0.0 --port 3000 --local",
+    "db:migrate:local": "wrangler d1 migrations apply itda-production --local",
+    "db:seed:local": "wrangler d1 execute itda-production --local --file=./seed.sql",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.2.1",
-    "bcryptjs": "^3.0.2",
-    "better-sqlite3": "^12.2.0",
-    "jose": "^6.1.0",
-    "lucide-react": "^0.544.0",
-    "next": "^16.3.5",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "react-hook-form": "^7.62.0",
-    "sharp": "^0.35.4",
-    "zod": "^4.1.8"
+    "hono": "^4.9.8"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.13",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^22.18.3",
-    "@types/react": "^19.1.13",
-    "@types/react-dom": "^19.1.9",
-    "eslint": "^9.35.0",
-    "eslint-config-next": "^16.3.5",
-    "tailwindcss": "^4.1.13",
-    "tsx": "^4.20.5",
+    "@cloudflare/workers-types": "^5.20260922.1",
+    "@hono/vite-cloudflare-pages": "^0.4.3",
     "typescript": "^5.9.2",
-    "vitest": "^5.0.1"
+    "vite": "^7.1.5",
+    "vitest": "^5.0.1",
+    "wrangler": "^4.136.2"
   }
 }
