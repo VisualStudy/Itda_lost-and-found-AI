@@ -1,5 +1,9 @@
 # Genspark Hosted Deployment
 
+운영 URL: https://366a9426-30c1-4ae8-93d6-e20cbe78c0a5.vip.gensparksite.com
+
+현재 Worker, D1, R2, SESSION_SECRET 설정과 migration 적용이 완료되었습니다.
+
 ## 지원 리소스
 
 `wrangler.jsonc`에는 다음만 선언합니다.

@@ -7,7 +7,7 @@
 - Phase 1: Hosted 기반, 디자인, D1 인증 완료
 - Phase 2: 습득물 등록, R2 이미지 업로드, 목록/상세 완료
 - Phase 3: 로컬 AI Feature Extraction baseline 시작
-- Genspark Hosted 초기 배포 승인 대기
+- Genspark Hosted 운영 배포 완료
 
 ## Hosted 기술 스택
 
@@ -30,6 +30,11 @@
 6. D1 `ai_features` 저장 및 `ai_status=READY`
 
 향후 `ImageEmbeddingProvider`, `TextEmbeddingProvider`, `OcrProvider` 인터페이스에 OpenCLIP, multilingual-e5/BGE, PaddleOCR self-hosted adapter를 연결합니다.
+
+## 운영 URL
+
+- https://366a9426-30c1-4ae8-93d6-e20cbe78c0a5.vip.gensparksite.com
+- 데모 계정: `demo@itda.kr` / `itda1234!`
 
 ## 실행
 
