@@ -8,7 +8,7 @@
 - Phase 2: 습득물 등록, R2 이미지 업로드, 목록/상세 완료
 - Phase 3: 로컬 특징 추출 baseline 시작
 - 공식 까치 마스코트 `잇치(Itchi)` 리브랜드 반영
-- Genspark Hosted 운영 배포 완료(신규 리브랜드 재배포 예정)
+- Genspark Hosted 잇치 리브랜드 운영 배포 완료
 
 ## UX 디자인
 
